@@ -1,4 +1,4 @@
-#!/Users/james/.virtualenvs/smooshy/bin/python
+#!/usr/bin/env python
 import os
 import smooshy.smoosher
 import sys
