@@ -3,9 +3,8 @@ import decimal
 import fcntl
 import os
 import shutil
-import simplejson
-import urllib2
 import urlparse
+import requests
 
 from cStringIO import StringIO
 
@@ -14,8 +13,7 @@ import multipart_handler
 # --- Smoosher --- #
 
 ACCEPTED_FILE_TYPES = ('jpeg', 'jpg', 'png')
-
-opener = urllib2.build_opener(multipart_handler.MultipartPostHandler)
+NO_FILES_UPLOADED = u'No files were uploaded'
 
 
 def saving_percent(original_size, replacement_size):
@@ -29,6 +27,8 @@ def saving_percent(original_size, replacement_size):
 class SmushItException(Exception):
     pass
 
+class SmushItWontUploadException(Exception):
+    pass
 
 class SmoosherFile(file):
     """File subclass that provides locking and unlocking when used inside a
@@ -71,19 +71,22 @@ class Smoosher(object):
     def get_smooshed(self):
         """Sends the original file to smoosh.it and returns the resulting data
            as a file-like object (StringIO)."""
-        response = opener.open('http://ypoweb-01.experf.gq1.yahoo.com/ysmush.it/ws.php', {
-            'files': self.original,
-        }).read()
-        response = simplejson.loads(response)
+        files = {'files': self.original}
+
+        response = requests.post('http://ypoweb-01.experf.gq1.yahoo.com/ysmush.it/ws.php', files = files)
+        json_response = response.json()
 
         # If smush.it reported an error, raise it
-        if 'error' in response:
-            raise SmushItException(response['error'])
+        if 'error' in json_response:
+            if json_response['error'] == NO_FILES_UPLOADED:
+                raise SmushItWontUploadException(NO_FILES_UPLOADED)
+            else:
+                raise SmushItException(json_response['error'])
 
-        result = urlparse.urljoin('http://smush.it', response['dest'])
+        smush_result = requests.get(urlparse.urljoin('http://smush.it', json_response['dest']))
 
         # Download the smushed file and return it in a StringIO
-        return StringIO(urllib2.urlopen(result).read())
+        return StringIO(smush_result.content)
 
     def smoosh(self):
         """Smooshes the file:
@@ -125,6 +128,10 @@ class Smoosher(object):
                 shutil.move(replacement.name, self.original.name)
                 # Print a success message
                 print '  WIN: Smooshed file %s%% smaller :)' % reduction
+
+            except SmushItWontUploadException, se:
+                self.original.restore_backup()
+                print '  FAIL: Smooshed file would not upload. Backup restored.'
 
             except SmushItException, e:
                 if e.message == 'No savings':
