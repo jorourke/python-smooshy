@@ -8,8 +8,6 @@ import requests
 
 from cStringIO import StringIO
 
-import multipart_handler
-
 # --- Smoosher --- #
 
 ACCEPTED_FILE_TYPES = ('jpeg', 'jpg', 'png')
